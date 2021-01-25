@@ -1,6 +1,22 @@
 'use strict';
 
-import Swiper from 'https://unpkg.com/swiper/swiper-bundle.esm.browser.min.js'
+
+const optionSlider = {
+  sliderPerView: 1,
+  loop: true,
+  autoplay: true,
+  effect: 'cube',
+  cubeEffect:{
+    shadow: false,
+  },
+  pagination: {
+    el: '.swiper-pagination',
+    type: 'bullets',
+    clickable: true,
+  }
+};
+
+const swiper = new Swiper('.swiper-container', optionSlider);
 
 const cartButton = document.querySelector("#cartbutton");
 const modal = document.querySelector(".modal");
@@ -22,14 +38,26 @@ const restaurantTitle = document.querySelector('.restaurant-title');
 const restaurantRating = document.querySelector('.rating');
 const restaurantPrice = document.querySelector('.price');
 const restaurantCategory = document.querySelector('.category');
+const inputAddress = document.querySelector('.input-address');
 const inputSearch = document.querySelector('.input-search');
 const modalBody = document.querySelector('.modal-body');
 const modalPrice = document.querySelector('.modal-pricetag');
 const buttonClearCart = document.querySelector('.clear-cart');
-let login = localStorage.getItem('gloDelivery');
+const swiperContainer = document.querySelector('.swiper-container');
 
-const cart = []; 
+let login = localStorage.getItem('Delivery');
 
+const cart = JSON.parse(localStorage.getItem(`Delivery_${login}`)) || []; 
+
+function saveCart(){
+  localStorage.setItem(`Delivery_${login}`, JSON.stringify());
+}
+function downloadCart() {
+  if (localStorage.getItem(`Delivery_${login}`)) {
+    const data = JSON.parse(localStorage.getItem(`Delivery_${login}`));
+    cart.push(...data)
+  }
+}
 const getData = async function(url) {
 
   const response = await fetch(url);
@@ -70,6 +98,7 @@ function clearForm(){
 function autorized() {
   function logOut(){
     login = null;
+    cart.lenght = 0; 
     localStorage.removeItem('gloDelivery');
     buttonAuth.style.display = '';
     userName.style.display = '';
@@ -77,6 +106,7 @@ function autorized() {
     cartButton.style.display = '';
     buttonOut.removeEventListener('click', logOut);
     checkAuth();
+    returnMain();
   }
   console.log('Авторизован');
   userName.textContent = login; 
@@ -92,12 +122,12 @@ function notAutorized() {
   console.log('Не авторизован');
   function logIn(event) {
     event.preventDefault();
-
+    
     if (validName(loginInput.value)) {
       login = loginInput.value;
       localStorage.setItem('gloDelivery', login);
       toggleModalAuth();
-
+      downloadCart();
       buttonAuth.removeEventListener('click',toggleModalAuth);
       closeAuth.removeEventListener('click', toggleModalAuth );
       logInForm.removeEventListener('submit', logIn);
@@ -131,8 +161,9 @@ function checkAuth() {
 //возврат на главную по клику на лого
 function returnMain() {
   containerPromo.classList.remove('hide');
-    restaurants.classList.remove('hide');
-    menu.classList.add('hide');
+  swiper.init();
+  restaurants.classList.remove('hide');
+  menu.classList.add('hide');
 }
 //создание карты ресторана
 function createCardRestaurant(restaurant) {
@@ -214,6 +245,8 @@ function openGoods(event) {
     if (restaurant) {
       cardsMenu.textContent = '';
       containerPromo.classList.add('hide');
+      swiper.destroy(false);
+      swiperContainer.classList.add('hide');
       restaurants.classList.add('hide');
       menu.classList.remove('hide');
 
@@ -231,6 +264,7 @@ function openGoods(event) {
     toggleModalAuth();
   }
 }
+//добавление товара в корзину
 function addToCart(event){
   const target = event.target;
   const buttonAddToCart = target.closest('.button-add-cart');
@@ -254,7 +288,7 @@ function addToCart(event){
         count: 1
       });
     }
-    console.log(cart);
+    saveCart();
   }
 }
 //формирование товаров и их цен в корзине
@@ -280,7 +314,7 @@ function renderCart(){
   }, 0);
 
   modalPrice.textContent = totalPrice + ' грн.';
-
+  saveCart();
 }
 
 function changeCount(event){
@@ -301,6 +335,61 @@ function changeCount(event){
   }
 }
 
+function searchHandler(event) {
+
+  const value = event.target.value.trim();
+
+  if (!value && event.charCode === 13) {
+    event.target.style.backgroundColor = RED_COLOR;
+    event.target.value = '';
+    setTimeout(function() {
+      event.target.style.backgroundColor = '';
+    }, 1500)
+    return;
+  }
+
+  if(!/^[А-Яа-яЁё]$/.test(event.key)) {
+    console.log(event.key);
+    return;
+  }
+
+  if (value.length < 3) return;
+
+  getData('./db/partners.json')
+    .then(function (data) {
+      return data.map(function(partner) {
+        return partner.products;          
+      });
+    })
+    .then(function (linksProduct) { 
+      cardsMenu.textContent = '';
+      
+      linksProduct.forEach(function(link) {
+        getData(`./db/${link}`)
+          .then(function (data) {
+            
+            const resultSearch = data.filter(function (item) { 
+              const name = item.name.toLowerCase();
+              return name.includes(value.toLowerCase());
+            })
+
+            containerPromo.classList.add('hide');
+            swiper.destroy(false);
+            restaurants.classList.add('hide');
+            menu.classList.remove('hide');
+
+            restaurantTitle.textContent = 'Результат поиска';
+            restaurantRating.textContent = '';
+            restaurantPrice.textContent = '';
+            restaurantCategory.textContent = 'разная кухня';
+            
+            resultSearch.forEach(createCardGood);
+          })
+      })
+    })
+  
+}
+
 function init(){
   getData('./db/partners.json').then(function(data){
     data.forEach(createCardRestaurant)
@@ -315,77 +404,18 @@ function init(){
   buttonClearCart.addEventListener('click', function(){
     cart.length=0;
     renderCart();
+    toggleModal();
   })
+
   modalBody.addEventListener('click', changeCount);
   close.addEventListener("click", toggleModal);
   cardsRestaurants.addEventListener('click', openGoods);
   logo.addEventListener('click', returnMain);
   cardsMenu.addEventListener('click', addToCart);
+  
+  inputSearch.addEventListener('keyup', searchHandler);
+  inputAddress.addEventListener('keyup', searchHandler);
   checkAuth();
-  
-  inputSearch.addEventListener('keypress', function(event){
-    if(event.charCode === 13) {
-      const value = event.target.value.trim();
-      if(!value) {
-        // alert('Введите блюдо');
-        event.target.style.backgroundColor = '#ff0000';
-        event.target.value ='';
-        setTimeout(function(){
-          event.target.style.backgroundColor = '';
-        }, 1500);
-        return;
-      }
-      console.log(value);
-      getData('./db/partners.json')
-      .then(function(data){
-        return data.map(function(partner){
-          return partner.products;
-        });
-      })
-      .then(function(linksProduct){
-        cardsMenu.textContent = '';
-
-        linksProduct.forEach(function(link){
-          getData(`./db/${link}`)
-          .then( function(data) {
-            
-            const resultSearch = data.filter(function(item){
-              const name = item.name.toLowerCase();
-              return name.includes(value.toLowerCase());
-            })
-
-            containerPromo.classList.add('hide');
-            restaurants.classList.add('hide');
-            menu.classList.remove('hide');
-      
-            restaurantTitle.textContent = 'Результат поиска';
-            restaurantRating.textContent = '';
-            restaurantPrice.textContent = '';
-            restaurantCategory.textContent = 'разная кухня';
-            resultSearch.forEach(createCardGood);
-          })
-        })
-      })
-    }
-  })
-  
-  //Slider
-  
-  new Swiper('.swiper-container', {
-    slidesPerView: 1,
-    loop: true,
-    autoplay: true,
-    effect: 'cube',
-    grabCursor: true,
-    cubeEffect:{
-      shadow: false,
-    },
-    pagination: {
-      el: '.swiper-pagination',
-      type: 'bullets',
-      clickable: true,
-    }
-  }) 
 }
 
 init(); 
